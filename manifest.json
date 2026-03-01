@@ -1,0 +1,21 @@
+{
+  "name": "SafeRoom - Women's Safety",
+  "short_name": "SafeRoom",
+  "description": "Women's Immediate Safe Space Locator with proactive safety intelligence.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fc",
+  "theme_color": "#8a63d2",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3596/3596090.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3596/3596090.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

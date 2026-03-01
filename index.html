@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeRoom - Women's Immediate Safe Space Locator</title>
+
+    <!-- Google Fonts: Poppins -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Leaflet.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#8a63d2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3596/3596090.png">
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Silent Mode Overlay (Weather Tracker) -->
+    <div id="silent-mode-ui" class="hidden">
+        <div class="weather-app">
+            <div class="weather-header">WeatherUpdate</div>
+            <div class="weather-temp">24°C</div>
+            <div class="weather-desc">Cloudy</div>
+            <div class="weather-details">Humidity: 78% | Wind: 5 km/h</div>
+            <!-- Invisible trigger zone covering the full screen -->
+            <div id="silent-trigger-zone"></div>
+        </div>
+    </div>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>SafeRoom</h1>
+                <p>Women's Immediate Safe Space Locator</p>
+                <p class="subtitle">Find secure routing, vetted safe spots, and instant emergency assistance when you
+                    need it most.</p>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- Live Map Section -->
+        <section class="section map-section">
+            <div class="section-header">
+                <h2>📍 Live Safety Map</h2>
+                <p>Vetted safe spots around you based on real-time open data.</p>
+            </div>
+
+            <!-- Dynamic Safety Score UI -->
+            <div id="safety-score-card" class="card score-card text-center">
+                <h3>Your Current Area Safety Score</h3>
+                <div id="score-display">
+                    <span id="score-number" class="score-number">--</span>
+                    <span class="score-max">/100</span>
+                </div>
+                <div id="score-badges"></div>
+                <p id="score-message">Locating and analyzing surroundings...</p>
+                <p id="density-index-display" class="hidden"
+                    style="margin-top: 5px; font-size: 0.85rem; font-weight: 500;">Density Index: <span
+                        id="density-val"></span></p>
+
+                <div class="protection-controls"
+                    style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                    <button id="btn-unsafe-zone" class="btn btn-warning"
+                        style="background-color: #f59e0b; color: white;">Start Unsafe Zone Timer (2m)</button>
+                    <div id="timer-display" class="hidden">
+                        <span id="countdown-text"
+                            style="font-size: 1.5rem; font-weight: 700; color: #ef4444;">02:00</span>
+                        <button id="btn-cancel-timer" class="btn btn-secondary"
+                            style="padding: 5px 10px; font-size: 0.8rem; margin-left: 10px;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="map-container" class="card map-card">
+                <div id="map"></div>
+
+                <!-- Map Legend Overlay -->
+                <div class="map-legend" style="bottom: 20px; left: 20px; right: auto; top: auto;">
+                    <div class="legend-item"><span class="dot blue" style="background: #3b82f6;"></span> Police</div>
+                    <div class="legend-item"><span class="dot green" style="background: #10b981;"></span> Hospital</div>
+                    <div class="legend-item"><span class="dot orange" style="background: #f59e0b;"></span> Railway</div>
+                    <div class="legend-item"><span class="dot purple" style="background: #8b5cf6;"></span> Subway</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Safe Spots Grid -->
+        <section class="section nearby-section">
+            <div class="section-header flex-header">
+                <h2>🛡️ Nearby Safe Spaces</h2>
+                <div style="display: flex; gap: 10px;">
+                    <button id="btn-silent-mode" class="btn btn-secondary" title="Activate disguised weather UI">Silent
+                        Mode</button>
+                    <button id="btn-find-nearby" class="btn btn-primary">Find Nearby Safe Spaces</button>
+                </div>
+            </div>
+
+            <!-- Route Monitoring Control -->
+            <div id="route-monitor-control" class="card" style="margin-bottom: 20px;">
+                <h3 style="margin-bottom: 10px; font-size: 1.1rem;">Continuous Route Monitoring</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">Click 'Set Safe
+                    Destination' then tap on the map to monitor your route deviation.</p>
+                <button id="btn-set-destination" class="btn btn-secondary">Set Safe Destination</button>
+                <div id="route-status" class="hidden"
+                    style="margin-top: 10px; font-size: 0.9rem; font-weight: 500; color: var(--safe-green);">Monitoring
+                    Active: Stay on path.</div>
+                <button id="btn-stop-route" class="btn hidden"
+                    style="background: var(--safe-red); color: white; margin-top: 10px;">Stop Route Monitoring</button>
+            </div>
+
+            <!-- Cards Container -->
+            <div id="safe-spots-grid" class="cards-grid">
+                <!-- Cards will be dynamically injected here by JS -->
+                <div class="empty-state" id="spots-empty-state">
+                    Click "Find Nearby Safe Spaces" to locate secure spots around you.
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loading-spinner" class="spinner-container hidden">
+                <div class="spinner"></div>
+                <p>Locating safe spaces...</p>
+            </div>
+        </section>
+
+        <!-- Community Contribution Form -->
+        <section class="section add-spot-section">
+            <div class="card form-card">
+                <div class="section-header">
+                    <h2>➕ Contribute a Safe Space</h2>
+                    <p>Help others by adding verified safe locations to our community network.</p>
+                </div>
+
+                <form id="add-spot-form">
+                    <div class="form-group">
+                        <label for="spot-name">Location Name</label>
+                        <input type="text" id="spot-name" required placeholder="e.g., 24/7 Metro Station Pharmacy">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="spot-lat">Latitude</label>
+                            <input type="number" id="spot-lat" step="any" required placeholder="e.g., 22.5726">
+                            <span class="help-text"><a href="#" id="use-my-location-link">Use my current
+                                    location</a></span>
+                        </div>
+                        <div class="form-group half">
+                            <label for="spot-lng">Longitude</label>
+                            <input type="number" id="spot-lng" step="any" required placeholder="e.g., 88.3639">
+                        </div>
+                    </div>
+
+                    <div class="form-row triple">
+                        <div class="form-group third">
+                            <label for="spot-lighting">Lighting (1-10)</label>
+                            <input type="number" id="spot-lighting" min="1" max="10" required>
+                        </div>
+                        <div class="form-group third">
+                            <label for="spot-crowd">Crowd Density (1-10)</label>
+                            <input type="number" id="spot-crowd" min="1" max="10" required
+                                title="Scale: 1 (empty) to 10 (very crowded)">
+                        </div>
+                        <div class="form-group third">
+                            <label for="spot-cctv">CCTV Coverage (1-10)</label>
+                            <input type="number" id="spot-cctv" min="1" max="10" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="spot-police">Distance to nearest Police Station (km)</label>
+                        <input type="number" id="spot-police" step="0.1" min="0" required placeholder="e.g., 1.5">
+                    </div>
+
+                    <button type="submit" class="btn btn-secondary btn-block" id="btn-submit-spot">Add Safe
+                        Space</button>
+                    <div id="form-msg" class="form-msg hidden"></div>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 SafeRoom. Built for Women's Health & Safety Intelligence System.</p>
+        </div>
+    </footer>
+
+    <!-- Emergency Floating Action Button (FAB) -->
+    <button id="btn-emergency" class="btn-emergency fab" title="Trigger Emergency SOS">
+        <span class="emergency-icon">🚨</span>
+    </button>
+
+    <!-- Emergency Modal -->
+    <div id="emergency-modal" class="modal-overlay hidden">
+        <div class="modal card">
+            <h2>⚠️ Emergency SOS Triggered</h2>
+            <p>Your location has been securely logged to our emergency response system.</p>
+            <div id="emergency-status" class="alert success">Signal Sent Successfully</div>
+            <button id="btn-close-modal" class="btn btn-block">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- Leaflet.js Base -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Custom JS -->
+    <script src="script.js"></script>
+</body>
+
+</html>
