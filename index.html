@@ -91,10 +91,19 @@
 
                 <!-- Map Legend Overlay -->
                 <div class="map-legend" style="bottom: 20px; left: 20px; right: auto; top: auto;">
+                    <strong>Places</strong>
                     <div class="legend-item"><span class="dot blue" style="background: #3b82f6;"></span> Police</div>
                     <div class="legend-item"><span class="dot green" style="background: #10b981;"></span> Hospital</div>
                     <div class="legend-item"><span class="dot orange" style="background: #f59e0b;"></span> Railway</div>
                     <div class="legend-item"><span class="dot purple" style="background: #8b5cf6;"></span> Subway</div>
+                    <hr style="margin: 5px 0; border: none; border-top: 1px solid #ccc;">
+                    <strong>Routing</strong>
+                    <div class="legend-item"><span class="line-blue"
+                            style="display:inline-block; width: 15px; height: 3px; background: #3b82f6;"></span>
+                        Standard Shortest</div>
+                    <div class="legend-item"><span class="line-green"
+                            style="display:inline-block; width: 15px; height: 3px; background: #10b981;"></span> Safest
+                        Efficient</div>
                 </div>
             </div>
         </section>
@@ -112,15 +121,28 @@
 
             <!-- Route Monitoring Control -->
             <div id="route-monitor-control" class="card" style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 10px; font-size: 1.1rem;">Continuous Route Monitoring</h3>
+                <h3 style="margin-bottom: 10px; font-size: 1.1rem;">Intelligent Route Navigation</h3>
                 <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">Click 'Set Safe
-                    Destination' then tap on the map to monitor your route deviation.</p>
+                    Destination' then tap on the map to generate the shortest safe route and monitor your path.</p>
                 <button id="btn-set-destination" class="btn btn-secondary">Set Safe Destination</button>
+
+                <!-- Route Info Card -->
+                <div id="route-info-card" class="hidden"
+                    style="margin-top: 15px; padding: 10px; background: var(--primary-light); border-radius: 8px;">
+                    <h4 style="margin-bottom: 5px; font-size: 0.95rem;">Active Route Details</h4>
+                    <p style="font-size: 0.85rem;">Distance: <span id="route-dist" style="font-weight: 600;">--</span> |
+                        Time: <span id="route-time" style="font-weight: 600;">--</span></p>
+                    <p style="font-size: 0.85rem; margin-top: 5px;">Route Safety Score: <span id="route-safety-score"
+                            style="font-weight: 700;">--</span>/100</p>
+                    <p style="font-size: 0.85rem; margin-top: 5px; color: var(--text-muted);"><span
+                            id="route-type-label">Calculating...</span></p>
+                </div>
+
                 <div id="route-status" class="hidden"
                     style="margin-top: 10px; font-size: 0.9rem; font-weight: 500; color: var(--safe-green);">Monitoring
                     Active: Stay on path.</div>
                 <button id="btn-stop-route" class="btn hidden"
-                    style="background: var(--safe-red); color: white; margin-top: 10px;">Stop Route Monitoring</button>
+                    style="background: var(--safe-red); color: white; margin-top: 10px;">Stop Route</button>
             </div>
 
             <!-- Cards Container -->

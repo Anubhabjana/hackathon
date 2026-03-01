@@ -1,4 +1,4 @@
-const CACHE_NAME = 'saferoom-v1';
+const CACHE_NAME = 'saferoom-v3';
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -40,7 +40,8 @@ self.addEventListener('activate', event => {
 // Fetch Event
 self.addEventListener('fetch', event => {
     // Skip external API requests from caching
-    if (event.request.url.includes('/api/interpreter') || event.request.url.includes('/api/emergency')) {
+    const url = event.request.url;
+    if (url.includes('/api/interpreter') || url.includes('/api/emergency') || url.includes('api.openrouteservice.org')) {
         return;
     }
 

@@ -254,6 +254,9 @@ function processGeospatialData(nodes, userLat, userLng) {
 
     updateSafetyScoreUI(finalScore, nearbyPlacesList.length);
     renderNearbyCards(nearbyPlacesList);
+
+    // Bind current nearby spots to global window for routing algorithm access
+    window.globalSpacesList = nearbyPlacesList;
 }
 
 // 5. Update Safety Score UI
@@ -516,12 +519,24 @@ function setupAdvancedFeatures() {
         }
     });
 
-    // 3. Continuous Route Monitoring
+    // 3. Continuous Route Monitoring & Intelligent Safe Routing
     let isSettingDestination = false;
     let safeDestination = null;
     let initialLocation = null;
     let routeWatchId = null;
     let destinationMarker = null;
+
+    // Polyline references
+    let shortestRouteLayer = null;
+    let safeRouteLayer = null;
+    let activeRouteGeoJSON = null; // To check deviation against
+
+    // ORS Elements
+    const routeInfoCard = document.getElementById('route-info-card');
+    const routeDistSpan = document.getElementById('route-dist');
+    const routeTimeSpan = document.getElementById('route-time');
+    const routeSafetyScoreSpan = document.getElementById('route-safety-score');
+    const routeTypeLabel = document.getElementById('route-type-label');
 
     btnSetDestination.addEventListener('click', () => {
         if (routeWatchId) return; // Already monitoring
@@ -529,9 +544,11 @@ function setupAdvancedFeatures() {
         btnSetDestination.textContent = "Tap on map...";
     });
 
-    map.on('click', (e) => {
+    map.on('click', async (e) => {
         if (!isSettingDestination) return;
         isSettingDestination = false;
+        btnSetDestination.textContent = "Calculating Route...";
+
         safeDestination = e.latlng;
 
         if (destinationMarker) map.removeLayer(destinationMarker);
@@ -539,16 +556,177 @@ function setupAdvancedFeatures() {
             icon: createIcon('#10b981') // Green destination
         }).addTo(map).bindPopup("Safe Destination").openPopup();
 
-        startRouteMonitoring();
+        // Ensure we have user location
+        if (!initialLocation && userLocation.lat) {
+            initialLocation = L.latLng(userLocation.lat, userLocation.lng);
+        }
+
+        if (initialLocation && safeDestination) {
+            await computeAndRenderRoutes(initialLocation, safeDestination);
+        } else {
+            alert("Could not determine your current location. Please allow location access.");
+            btnSetDestination.textContent = "Set Safe Destination";
+        }
     });
 
+    // --- ORS Fetch & Algorithm ---
+    async function computeAndRenderRoutes(start, end) {
+        // Clear old routes
+        if (shortestRouteLayer) map.removeLayer(shortestRouteLayer);
+        if (safeRouteLayer) map.removeLayer(safeRouteLayer);
+        routeInfoCard.classList.remove('hidden');
+        routeTypeLabel.textContent = "Calculating routes via ORS...";
+
+        const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjliMDg2Zjc5ZGZlNTRhMjBhNGRlNjFmM2NlNTc2MGM4IiwiaCI6Im11cm11cjY0In0='; // Hardcoded for hackathon
+
+        try {
+            const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8',
+                    'Content-Type': 'application/json',
+                    'Authorization': ORS_API_KEY
+                },
+                body: JSON.stringify({
+                    coordinates: [[start.lng, start.lat], [end.lng, end.lat]],
+                    preference: "shortest",
+                    instructions: false
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`ORS Error ${response.status}: ${errText}`);
+            }
+
+            const data = await response.json();
+            console.log("ORS RAW RESPONSE:", data); // <-- ADDED THIS FOR DEBUGGING
+
+            if (!data.features || data.features.length === 0) {
+                // If features is empty, ORS couldn't find a path (e.g. click in water or too far from road)
+                throw new Error("No driving route found between these points. Please try selecting a location closer to a road.");
+            }
+
+            const feature = data.features[0];
+            const coordinates = feature.geometry.coordinates; // [lng, lat]
+            const properties = feature.properties;
+
+            // Standard ORS Metrics
+            const distanceKm = properties.summary.distance / 1000;
+            const durationMins = properties.summary.duration / 60;
+
+            routeDistSpan.textContent = distanceKm.toFixed(2) + " km";
+            routeTimeSpan.textContent = Math.round(durationMins) + " mins";
+
+            // Evaluate Safety Route Algorithm
+            const routeSafetyAnalysis = computeRouteSafetyScore(coordinates);
+            const routeSafetyScore = routeSafetyAnalysis.score;
+            routeSafetyScoreSpan.textContent = routeSafetyScore;
+
+            // Safe Route Cost Function Comparison
+            const alpha = 1.0; // Distance weight
+            const beta = 0.3;  // Safety weight (inverse distance equivalent)
+            const standardCost = alpha * distanceKm;
+            const safeCost = (alpha * distanceKm) - (beta * (routeSafetyScore / 100));
+
+            // Tolerance (if safety heavily offsets a slightly longer distance, we prefer it)
+            // Since we are currently only getting 'shortest', the route is the same.
+            // In a real multi-route scenario, we'd compare alternative routes.
+            // For now, we grade the shortest route and color it accordingly.
+
+            if (routeSafetyScore >= 60) {
+                routeTypeLabel.innerHTML = '<span style="color:var(--safe-green)">✓ Safest Efficient Route</span>';
+                routeSafetyScoreSpan.style.color = "var(--safe-green)";
+
+                safeRouteLayer = L.geoJSON(feature, {
+                    style: { color: "#10b981", weight: 6, opacity: 0.8 }
+                }).addTo(map);
+
+                activeRouteGeoJSON = feature.geometry; // Assign for deviation monitoring
+            } else {
+                routeTypeLabel.innerHTML = '<span style="color:var(--safe-red)">⚠️ Proceed with caution (Standard Route)</span>';
+                routeSafetyScoreSpan.style.color = "var(--safe-red)";
+
+                shortestRouteLayer = L.geoJSON(feature, {
+                    style: { color: "#3b82f6", weight: 6, opacity: 0.8 }
+                }).addTo(map);
+
+                activeRouteGeoJSON = feature.geometry;
+            }
+
+            map.fitBounds(L.geoJSON(feature).getBounds(), { padding: [50, 50] });
+            startRouteMonitoring();
+
+        } catch (error) {
+            console.error("Routing Error:", error);
+            routeTypeLabel.textContent = `Routing failed: ${error.message}`;
+            btnSetDestination.textContent = "Set Safe Destination";
+        }
+    }
+
+    // Step 2-5: Shortest Safe Route Segmentation & Scoring Algorithm
+    function computeRouteSafetyScore(coordinates) {
+        // Segment the route every ~100m. coordinates are [lng, lat]
+        const segments = [];
+        for (let i = 0; i < coordinates.length - 1; i++) {
+            const startNode = coordinates[i];
+            const endNode = coordinates[i + 1];
+
+            // Push midpoints (simple interpolation for density)
+            segments.push({ lat: startNode[1], lng: startNode[0] });
+        }
+
+        if (segments.length === 0) return { score: 0 };
+
+        let totalSegmentScores = 0;
+
+        // Iterate over segments, check proximity to global nearbyPlacesList
+        const nearby = window.globalSpacesList || []; // Ensure global access or pass it if encapsulated
+
+        segments.forEach(seg => {
+            let segScore = 0;
+
+            let policeCount = 0;
+            let hospitalCount = 0;
+            let transitCount = 0;
+
+            nearby.forEach(p => {
+                const distToSegment = calculateDistance(seg.lat, seg.lng, p.lat, p.lng);
+                if (distToSegment <= 0.5) { // 500m
+                    if (p.icon === 'police') policeCount++;
+                    if (p.icon === 'hospital') hospitalCount++;
+                    if (p.icon === 'subway' || p.icon === 'railway') transitCount++;
+                }
+            });
+
+            // Step 4: Compute Segment Safety Score (w1:3, w2:2, w3:1)
+            segScore = (3 * policeCount) + (2 * hospitalCount) + (1 * transitCount);
+
+            // Normalize segment score out of 100 for consistency
+            if (segScore > 10) segScore = 10; // Cap
+            totalSegmentScores += (segScore * 10);
+        });
+
+        // Step 5: Route Safety Score = Average
+        let routeScore = Math.round(totalSegmentScores / segments.length);
+        if (routeScore < 15) routeScore = 15; // Base minimum
+        if (routeScore > 100) routeScore = 100;
+
+        return { score: routeScore };
+    }
+
+    // Mathematical utility for point to line distance deviation
+    function distToSegmentSquared(p, v, w) {
+        let l2 = Math.pow(v.lat - w.lat, 2) + Math.pow(v.lng - w.lng, 2);
+        if (l2 === 0) return Math.pow(p.lat - v.lat, 2) + Math.pow(p.lng - v.lng, 2);
+        let t = ((p.lat - v.lat) * (w.lat - v.lat) + (p.lng - v.lng) * (w.lng - v.lng)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return Math.pow(p.lat - (v.lat + t * (w.lat - v.lat)), 2) + Math.pow(p.lng - (v.lng + t * (w.lng - v.lng)), 2);
+    }
+
+    // Step 8: Continuous Deviation Monitoring from GeoJSON LineString
     function startRouteMonitoring() {
         if (routeWatchId) navigator.geolocation.clearWatch(routeWatchId);
-        if (!("geolocation" in navigator)) return alert("Geolocation not supported");
-
-        navigator.geolocation.getCurrentPosition(pos => {
-            initialLocation = L.latLng(pos.coords.latitude, pos.coords.longitude);
-        });
 
         routeStatus.classList.remove('hidden');
         routeStatus.textContent = "Monitoring Active: Stay on path.";
@@ -556,40 +734,46 @@ function setupAdvancedFeatures() {
         btnSetDestination.classList.add('hidden');
         btnStopRoute.classList.remove('hidden');
 
-        // Request permission for Notifications
         if ("Notification" in window && Notification.permission !== "granted") {
             Notification.requestPermission();
         }
 
         routeWatchId = navigator.geolocation.watchPosition((pos) => {
-            if (!initialLocation || !safeDestination) return;
-            const current = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            if (!activeRouteGeoJSON) return;
+            const current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            const coords = activeRouteGeoJSON.coordinates; // [lng, lat]
 
-            // Simplified deviation calculation
-            const dy = safeDestination.lat - initialLocation.lat;
-            const dx = (safeDestination.lng - initialLocation.lng) * Math.cos(initialLocation.lat * Math.PI / 180);
-            const lineLength = Math.sqrt(dx * dx + dy * dy);
+            let minDistanceMeters = Infinity;
 
-            if (lineLength === 0) return;
+            // Iterate over all line segments in the GeoJSON to find closest distance
+            for (let i = 0; i < coords.length - 1; i++) {
+                const p1 = { lat: coords[i][1], lng: coords[i][0] };
+                const p2 = { lat: coords[i + 1][1], lng: coords[i + 1][0] };
 
-            const currDy = current.lat - initialLocation.lat;
-            const currDx = (current.lng - initialLocation.lng) * Math.cos(initialLocation.lat * Math.PI / 180);
+                // Uses rough Euclidean approximation mapped to meters 
+                // Note: For strict accuracy Haversine on projections is better, 
+                // but this satisfies rapid deviation detection in < 1km scales
+                const distSq = distToSegmentSquared(current, p1, p2);
+                const distDeg = Math.sqrt(distSq);
+                const distM = distDeg * 111320; // Exact meters approx at equator
 
-            const crossProduct = Math.abs(dx * currDy - dy * currDx);
-            const deviationDeg = crossProduct / lineLength;
-            const deviationMeters = deviationDeg * 111320;
+                if (distM < minDistanceMeters) {
+                    minDistanceMeters = distM;
+                }
+            }
 
-            if (deviationMeters > 200) {
+            if (minDistanceMeters > 200) {
                 routeStatus.textContent = "Warning: Route deviation > 200m!";
                 routeStatus.style.color = "var(--safe-red)";
 
                 if ("Notification" in window && Notification.permission === "granted") {
-                    new Notification("SafeRoom Alert", { body: "You have deviated from your safe route!" });
+                    new Notification("SafeRoom Alert", { body: "You have deviated over 200m from your safe route!" });
                 }
             } else {
-                routeStatus.textContent = "Monitoring Active: Stay on path.";
+                routeStatus.textContent = `Monitoring Active (Dev: ${Math.round(minDistanceMeters)}m)`;
                 routeStatus.style.color = "var(--safe-green)";
             }
+
         }, err => console.warn(err), { enableHighAccuracy: true });
     }
 
@@ -597,7 +781,11 @@ function setupAdvancedFeatures() {
         if (routeWatchId) navigator.geolocation.clearWatch(routeWatchId);
         routeWatchId = null;
         if (destinationMarker) map.removeLayer(destinationMarker);
+        if (shortestRouteLayer) map.removeLayer(shortestRouteLayer);
+        if (safeRouteLayer) map.removeLayer(safeRouteLayer);
 
+        activeRouteGeoJSON = null;
+        routeInfoCard.classList.add('hidden');
         routeStatus.classList.add('hidden');
         btnSetDestination.classList.remove('hidden');
         btnSetDestination.textContent = "Set Safe Destination";
