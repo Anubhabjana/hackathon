@@ -32,13 +32,15 @@ def init_db(app):
             )
         ''')
         
-        # 2. emergency_logs table
+        # 3. incident_reports table
         db.execute('''
-            CREATE TABLE IF NOT EXISTS emergency_logs (
+            CREATE TABLE IF NOT EXISTS incident_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 latitude REAL NOT NULL,
                 longitude REAL NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                type TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expiry DATETIME DEFAULT (datetime('now', '+24 hours'))
             )
         ''')
         

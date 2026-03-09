@@ -3,12 +3,17 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>SafeRoom - Women's Immediate Safe Space Locator</title>
 
-    <!-- Google Fonts: Poppins -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Poppins:wght@300;400;500;600&display=swap"
         rel="stylesheet">
+
+    <!-- Font Awesome (for map markers and UI icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
 
     <!-- Leaflet.js CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -30,20 +35,30 @@
     <!-- Silent Mode Overlay (Weather Tracker) -->
     <div id="silent-mode-ui" class="hidden">
         <div class="weather-app">
-            <div class="weather-header">WeatherUpdate</div>
-            <div class="weather-temp">24°C</div>
-            <div class="weather-desc">Cloudy</div>
-            <div class="weather-details">Humidity: 78% | Wind: 5 km/h</div>
+            <div class="weather-header"><i class="fas fa-bars" style="font-size: 1.2rem;"></i> <span
+                    style="font-weight: 500;">WeatherUpdate</span> <i class="fas fa-search"
+                    style="font-size: 1.2rem;"></i></div>
+            <div style="margin: 30px 0; font-size: 5rem; text-shadow: 0 4px 10px rgba(0,0,0,0.3);"><i
+                    class="fas fa-cloud-sun"></i></div>
+            <div id="mock-weather-temp" class="weather-temp">24°C</div>
+            <div id="mock-weather-desc" class="weather-desc">Cloudy</div>
+            <div id="mock-weather-details" class="weather-details"
+                style="opacity: 0.8; font-weight: 300; margin-bottom: 5px;">Humidity: 78% | Wind: 5 km/h</div>
+            <div style="font-size: 0.85rem; color: #aaa; font-style: italic;">Last updated: just now</div>
             <!-- Invisible trigger zone covering the full screen -->
             <div id="silent-trigger-zone"></div>
         </div>
     </div>
 
     <!-- Hero Section -->
-    <header class="hero">
+    <header class="hero" style="position: relative;">
+        <button id="btn-theme-toggle" class="btn btn-secondary"
+            style="position: absolute; top: 20px; right: 20px; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; padding: 0; font-size: 1.2rem; background: rgba(255,255,255,0.2); border: none; color: white; backdrop-filter: blur(5px);">🌙</button>
+
         <div class="container">
             <div class="hero-content">
-                <h1>SafeRoom</h1>
+                <h1 style="display: flex; align-items: center; justify-content: center; gap: 15px;"><i
+                        class="fas fa-shield-halved"></i> SafeRoom</h1>
                 <p>Women's Immediate Safe Space Locator</p>
                 <p class="subtitle">Find secure routing, vetted safe spots, and instant emergency assistance when you
                     need it most.</p>
@@ -52,6 +67,19 @@
     </header>
 
     <main class="container">
+
+        <!-- Offline Indicator -->
+        <div id="offline-indicator" class="alert hidden"
+            style="background-color: #ef4444; color: white; text-align: center; margin-bottom: 20px;">
+            ⚠️ You are offline. Showing cached safe spaces.
+        </div>
+
+        <!-- Time-based Warning -->
+        <div id="night-warning-banner" class="alert hidden"
+            style="background-color: #f59e0b; color: white; text-align: center; margin-bottom: 20px;">
+            🌙 <b>Nighttime Risk:</b> Safety scores drop after 10 PM. Stay alert and share your location with trusted
+            contacts.
+        </div>
 
         <!-- Live Map Section -->
         <section class="section map-section">
@@ -63,9 +91,22 @@
             <!-- Dynamic Safety Score UI -->
             <div id="safety-score-card" class="card score-card text-center">
                 <h3>Your Current Area Safety Score</h3>
-                <div id="score-display">
-                    <span id="score-number" class="score-number">--</span>
-                    <span class="score-max">/100</span>
+                <div id="score-display-container"
+                    style="position: relative; width: 150px; height: 150px; margin: 15px auto;">
+                    <svg class="score-gauge" width="150" height="150" viewBox="0 0 150 150">
+                        <circle cx="75" cy="75" r="65" fill="none" stroke="#e5e7eb" stroke-width="12"></circle>
+                        <circle id="score-gauge-fill" cx="75" cy="75" r="65" fill="none" stroke="var(--primary)"
+                            stroke-width="12" stroke-dasharray="408.4" stroke-dashoffset="408.4" stroke-linecap="round"
+                            style="transition: stroke-dashoffset 1s ease-out, stroke 1s ease-out; transform: rotate(-90deg); transform-origin: 50% 50%;">
+                        </circle>
+                    </svg>
+                    <div id="score-display"
+                        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0;">
+                        <span id="score-number" class="score-number"
+                            style="font-size: 2.5rem; line-height: 1; font-weight: 700;">--</span>
+                        <span class="score-max"
+                            style="font-size: 0.9rem; margin-top: -5px; color: var(--text-muted); font-weight: 500;">/100</span>
+                    </div>
                 </div>
                 <div id="score-badges"></div>
                 <p id="score-message">Locating and analyzing surroundings...</p>
@@ -112,9 +153,12 @@
         <section class="section nearby-section">
             <div class="section-header flex-header">
                 <h2>🛡️ Nearby Safe Spaces</h2>
-                <div style="display: flex; gap: 10px;">
+                <div class="action-buttons-wrapper">
                     <button id="btn-silent-mode" class="btn btn-secondary" title="Activate disguised weather UI">Silent
                         Mode</button>
+                    <button id="btn-fake-call" class="btn btn-secondary" title="Simulate an incoming phone call">📞 Fake
+                        Call</button>
+                    <button id="btn-settings" class="btn btn-secondary" title="Trusted Contacts">⚙️ Settings</button>
                     <button id="btn-find-nearby" class="btn btn-primary">Find Nearby Safe Spaces</button>
                 </div>
             </div>
@@ -146,6 +190,8 @@
             </div>
 
             <!-- Cards Container -->
+            <p id="last-updated" class="hidden"
+                style="font-size: 0.85rem; color: var(--text-muted); text-align: right; margin-bottom: 8px;"></p>
             <div id="safe-spots-grid" class="cards-grid">
                 <!-- Cards will be dynamically injected here by JS -->
                 <div class="empty-state" id="spots-empty-state">
@@ -153,10 +199,17 @@
                 </div>
             </div>
 
-            <!-- Loading Spinner -->
-            <div id="loading-spinner" class="spinner-container hidden">
-                <div class="spinner"></div>
-                <p>Locating safe spaces...</p>
+            <!-- Loading Skeletons -->
+            <div id="loading-spinner" class="hidden" style="margin-top: 20px; width: 100%;">
+                <div style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 20px; text-align: center;">
+                    Locating verified safe spaces on OSM framework...</div>
+                <div
+                    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; width: 100%;">
+                    <div class="skeleton-loader" style="height: 140px;"></div>
+                    <div class="skeleton-loader" style="height: 140px;"></div>
+                    <div class="skeleton-loader" style="height: 140px;"></div>
+                    <div class="skeleton-loader" style="height: 140px;"></div>
+                </div>
             </div>
         </section>
 
@@ -224,10 +277,65 @@
         </div>
     </footer>
 
+    <!-- Quick SMS Location Share FAB -->
+    <button id="btn-quick-sms" class="fab" title="Quick SMS Location Share"
+        style="bottom: 150px; background-color: #3b82f6; width: 50px; height: 50px;">
+        <span class="emergency-icon" style="font-size: 1.4rem;">💬</span>
+    </button>
+
+    <!-- Incident Reporting FAB -->
+    <button id="btn-report-incident" class="fab" title="Report Incident"
+        style="bottom: 90px; background-color: #f59e0b; width: 50px; height: 50px;">
+        <span class="emergency-icon" style="font-size: 1.4rem;">⚠️</span>
+    </button>
+
     <!-- Emergency Floating Action Button (FAB) -->
     <button id="btn-emergency" class="btn-emergency fab" title="Trigger Emergency SOS">
-        <span class="emergency-icon">🚨</span>
+        <span class="emergency-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
     </button>
+    <style>
+        @keyframes emergencyBounce {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(0.9);
+            }
+        }
+
+        .bounce-anim {
+            animation: emergencyBounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+    </style>
+
+    <!-- Incident Report Modal -->
+    <div id="incident-modal" class="modal-overlay hidden">
+        <div class="modal card">
+            <h2>⚠️ Report Incident</h2>
+            <p>Alert others about real-time dangers in your immediate area.</p>
+            <form id="incident-form" style="margin-top: 15px;">
+                <div class="form-group">
+                    <label for="incident-type">Incident Type</label>
+                    <select id="incident-type" required
+                        style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-family: 'Poppins', sans-serif;">
+                        <option value="Harassment">Harassment</option>
+                        <option value="Suspicious Person">Suspicious Person</option>
+                        <option value="Poor Lighting">Poor Lighting / Dark Area</option>
+                        <option value="Theft/Robbery">Theft / Robbery</option>
+                        <option value="Aggressive Animal">Aggressive Animal</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-secondary btn-block"
+                    style="background: #f59e0b; color: white;">Submit Report</button>
+            </form>
+            <div id="incident-status" class="alert hidden" style="margin-top: 10px;"></div>
+            <button id="btn-close-incident-modal" class="btn btn-block" style="margin-top: 10px;">Cancel</button>
+        </div>
+    </div>
 
     <!-- Emergency Modal -->
     <div id="emergency-modal" class="modal-overlay hidden">
@@ -235,7 +343,100 @@
             <h2>⚠️ Emergency SOS Triggered</h2>
             <p>Your location has been securely logged to our emergency response system.</p>
             <div id="emergency-status" class="alert success">Signal Sent Successfully</div>
+            <button id="btn-share-location" class="btn btn-block hidden"
+                style="background: var(--primary-color); color: white; margin-bottom: 10px;">Share My Location</button>
+            <button id="btn-cancel-emergency" class="btn btn-block hidden"
+                style="background: var(--safe-red); color: white; margin-bottom: 10px;">Cancel SOS</button>
             <button id="btn-close-modal" class="btn btn-block">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- Settings / Trusted Contacts Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal card">
+            <h2>⚙️ Trusted Contacts</h2>
+            <p>Save up to 3 phone numbers for 1-tap SMS location sharing.</p>
+            <form id="settings-form" style="margin-top: 15px;">
+                <div class="form-group">
+                    <label>Contact 1</label>
+                    <input type="tel" id="contact-1" placeholder="e.g. +1234567890">
+                </div>
+                <div class="form-group">
+                    <label>Contact 2</label>
+                    <input type="tel" id="contact-2" placeholder="e.g. +1234567890">
+                </div>
+                <div class="form-group">
+                    <label>Contact 3</label>
+                    <input type="tel" id="contact-3" placeholder="e.g. +1234567890">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Save Contacts</button>
+            </form>
+            <div id="settings-status" class="alert hidden" style="margin-top: 10px;"></div>
+            <button id="btn-close-settings" class="btn btn-block" style="margin-top: 10px;">Close</button>
+        </div>
+    </div>
+
+    <!-- Fake Call Fullscreen UI -->
+    <div id="fake-call-ui" class="hidden"
+        style="position: fixed; inset: 0; background: #111; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 80px 20px 60px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: white;">
+        <div style="text-align: center;">
+            <div style="font-size: 1.2rem; color: #aaa; margin-bottom: 30px;">Incoming call</div>
+            <div
+                style="width: 120px; height: 120px; border-radius: 50%; background: #333; margin: 0 auto 20px auto; display: flex; justify-content: center; align-items: center; font-size: 4rem; color: #666; box-shadow: 0 0 0 10px rgba(255,255,255,0.05), 0 0 0 20px rgba(255,255,255,0.02);">
+                <i class="fas fa-user"></i>
+            </div>
+            <div style="font-size: 2.5rem; font-weight: 300; margin-bottom: 5px;">Mom</div>
+            <div style="font-size: 1rem; color: #888;">Mobile</div>
+        </div>
+
+        <div style="display: flex; width: 100%; max-width: 320px; justify-content: space-between; padding: 0 20px;">
+            <div style="text-align: center;">
+                <button id="btn-decline-call"
+                    style="background: #ef4444; width: 80px; height: 80px; border-radius: 50%; border: none; font-size: 2.2rem; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; transition: transform 0.2s; color: white;"><i
+                        class="fa-solid fa-phone-slash"></i></button>
+                <span style="font-size: 0.9rem;">Decline</span>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="btn-accept-call"
+                    style="background: #10b981; width: 80px; height: 80px; border-radius: 50%; border: none; font-size: 2.2rem; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; animation: pulseCall 1.5s infinite; margin-bottom: 12px; color: white;"><i
+                        class="fa-solid fa-phone"></i></button>
+                <span style="font-size: 0.9rem;">Accept</span>
+            </div>
+        </div>
+        <style>
+            @keyframes pulseCall {
+                0% {
+                    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+                }
+
+                70% {
+                    box-shadow: 0 0 0 20px rgba(16, 185, 129, 0);
+                }
+
+                100% {
+                    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+                }
+            }
+        </style>
+    </div>
+
+    <!-- Welcome Tour Modal -->
+    <div id="welcome-modal" class="modal-overlay hidden" style="z-index: 99999; backdrop-filter: blur(10px);">
+        <div class="modal card" style="text-align: center; max-width: 450px;">
+            <h2 style="font-size: 2rem; margin-bottom: 10px;">👋 Welcome to SafeRoom</h2>
+            <p style="margin-bottom: 25px;">Your intelligent women's safety companion.</p>
+            <div
+                style="text-align: left; margin-bottom: 30px; background: var(--bg-color); padding: 20px; border-radius: 12px;">
+                <p style="margin-bottom: 15px;"><b style="color: var(--primary);">🛡️ Reliable Routing:</b> Maps out
+                    safe paths avoiding dark alleys and isolated areas based on lighting and crowd data.</p>
+                <p style="margin-bottom: 15px;"><b style="color: var(--primary);">💬 Quick SMS:</b> Tap the blue icon
+                    anytime to text live coordinates to 3 trusted contacts.</p>
+                <p><b style="color: var(--primary);">📞 Fake Call & Silent Mode:</b> Escape uneasy situations
+                    effortlessly with disguised screens.</p>
+            </div>
+            <button id="btn-close-tour" class="btn btn-primary btn-block" style="font-size: 1.1rem; padding: 15px;">Get
+                Started</button>
         </div>
     </div>
 
@@ -245,6 +446,21 @@
 
     <!-- Custom JS -->
     <script src="script.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
+            });
+        }
+    </script>
 </body>
 
 </html>

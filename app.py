@@ -1,6 +1,9 @@
 import os
+import requests
+import sqlite3
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_caching import Cache
 
 from config import Config
 from database import init_db, close_db, get_db
@@ -13,6 +16,10 @@ app.config.from_object(Config)
 # Enable CORS 
 CORS(app)
 
+# Initialize Cache
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 30})
+cache.init_app(app)
+
 # Register teardown function
 app.teardown_appcontext(close_db)
 
@@ -22,25 +29,37 @@ def index():
     return app.send_static_file('index.html')
 
 @app.route('/api/safe-spots', methods=['GET'])
+@cache.cached(timeout=30)
 def get_all_safe_spots():
     """
     Returns all safe spots with safety_score included
     """
     db = get_db()
     try:
+        # Fetch active incidents
+        cursor = db.execute('''
+            SELECT * FROM incident_reports 
+            WHERE expiry > datetime('now')
+        ''')
+        incidents = [dict(row) for row in cursor.fetchall()]
+
         cursor = db.execute('SELECT * FROM safe_spots')
         rows = cursor.fetchall()
         
         spots = []
         for row in rows:
             spot_dict = dict(row)
-            spot_dict['safety_score'] = calculate_safety_score(spot_dict)
+            spot_dict['safety_score'] = calculate_safety_score(spot_dict, incidents)
             spots.append(spot_dict)
             
         return jsonify(spots), 200
         
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error in get_all_safe_spots: {e}")
+        return jsonify({"error": "Failed to retrieve safe spots from database"}), 500
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        app.logger.error(f"Unexpected error in get_all_safe_spots: {e}")
+        return jsonify({"error": "An unexpected server error occurred"}), 500
 
 @app.route('/api/nearby', methods=['GET'])
 def get_nearby_spots():
@@ -61,6 +80,13 @@ def get_nearby_spots():
     
     db = get_db()
     try:
+        # Fetch active incidents
+        cursor = db.execute('''
+            SELECT * FROM incident_reports 
+            WHERE expiry > datetime('now')
+        ''')
+        incidents = [dict(row) for row in cursor.fetchall()]
+
         cursor = db.execute('SELECT * FROM safe_spots')
         rows = cursor.fetchall()
         
@@ -70,7 +96,7 @@ def get_nearby_spots():
             dist = haversine_distance(lat, lng, spot_dict['latitude'], spot_dict['longitude'])
             
             if dist <= radius:
-                spot_dict['safety_score'] = calculate_safety_score(spot_dict)
+                spot_dict['safety_score'] = calculate_safety_score(spot_dict, incidents)
                 spot_dict['distance'] = round(dist, 2)
                 
                 # Composite score
@@ -95,8 +121,12 @@ def get_nearby_spots():
             
         return jsonify(nearby_spots), 200
         
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error in get_nearby_spots: {e}")
+        return jsonify({"error": "Failed to calculate nearby spots from database"}), 500
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        app.logger.error(f"Unexpected error in get_nearby_spots: {e}")
+        return jsonify({"error": "An unexpected server error occurred"}), 500
 
 @app.route('/api/safe-spots', methods=['POST'])
 def add_safe_spot():
@@ -137,8 +167,12 @@ def add_safe_spot():
         db.commit()
         return jsonify({"message": "Safe spot added successfully", "id": cursor.lastrowid}), 201
         
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error in add_safe_spot: {e}")
+        return jsonify({"error": "Failed to save the safe spot to the database"}), 500
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        app.logger.error(f"Unexpected error in add_safe_spot: {e}")
+        return jsonify({"error": "An unexpected server error occurred while adding"}), 500
 
 @app.route('/api/emergency', methods=['POST'])
 def trigger_emergency():
@@ -160,8 +194,62 @@ def trigger_emergency():
         cursor = db.execute('INSERT INTO emergency_logs (latitude, longitude) VALUES (?, ?)', (lat, lng))
         db.commit()
         return jsonify({"message": "Emergency logged successfully", "log_id": cursor.lastrowid}), 201
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error in trigger_emergency: {e}")
+        return jsonify({"error": "Failed to log emergency in database"}), 500
     except Exception as e:
-        return jsonify({"error": "Internal server error"}), 500
+        app.logger.error(f"Unexpected error in trigger_emergency: {e}")
+        return jsonify({"error": "An unexpected server error occurred while logging the emergency"}), 500
+
+@app.route('/api/incidents', methods=['GET'])
+def get_incidents():
+    """Get active incident reports from the last 24 hours."""
+    db = get_db()
+    try:
+        cursor = db.execute('''
+            SELECT * FROM incident_reports 
+            WHERE expiry > datetime('now')
+        ''')
+        rows = cursor.fetchall()
+        incidents = [dict(row) for row in rows]
+        return jsonify(incidents), 200
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error in get_incidents: {e}")
+        return jsonify({"error": "Failed to retrieve incidents"}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in get_incidents: {e}")
+        return jsonify({"error": "An unexpected server error occurred"}), 500
+
+@app.route('/api/incidents', methods=['POST'])
+def add_incident():
+    """Submit a new crowdsourced incident report"""
+    data = request.get_json()
+    if not data or not all(k in data for k in ('latitude', 'longitude', 'type')):
+        return jsonify({"error": "Missing latitude, longitude, or type"}), 400
+        
+    try:
+        lat = float(data['latitude'])
+        lng = float(data['longitude'])
+        incident_type = str(data['type'])
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            return jsonify({"error": "Invalid latitude or longitude range"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid data format"}), 400
+        
+    db = get_db()
+    try:
+        cursor = db.execute('''
+            INSERT INTO incident_reports (latitude, longitude, type) 
+            VALUES (?, ?, ?)
+        ''', (lat, lng, incident_type))
+        db.commit()
+        return jsonify({"message": "Incident logged successfully", "id": cursor.lastrowid}), 201
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error in add_incident: {e}")
+        return jsonify({"error": "Failed to log incident"}), 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error in add_incident: {e}")
+        return jsonify({"error": "An unexpected server error occurred"}), 500
 
 if __name__ == '__main__':
     # Initialize the database on startup
