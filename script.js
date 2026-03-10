@@ -1101,44 +1101,31 @@ function setupAdvancedFeatures() {
         if (shortestRouteLayer) map.removeLayer(shortestRouteLayer);
         if (safeRouteLayer) map.removeLayer(safeRouteLayer);
         routeInfoCard.classList.remove('hidden');
-        routeTypeLabel.textContent = "Calculating routes via ORS...";
+        routeTypeLabel.textContent = "Calculating safe route...";
 
         try {
-            const ORS_API_KEY = "5b3ce3597851110001cf6248dcd1ce9ef215456ab3544db4ad8aa8bb";
-            const response = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car/geojson`, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8',
-                    'Content-Type': 'application/json',
-                    'Authorization': ORS_API_KEY
-                },
-                body: JSON.stringify({
-                    coordinates: [[start.lng, start.lat], [end.lng, end.lat]],
-                    preference: "shortest",
-                    instructions: false
-                })
-            });
+            // Using OSRM (Open Source Routing Machine) public API which doesn't require an authentication key
+            const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`);
 
             if (!response.ok) {
                 const errText = await response.text();
-                throw new Error(`ORS Error ${response.status}: ${errText}`);
+                throw new Error(`OSRM Error ${response.status}: ${errText}`);
             }
 
             const data = await response.json();
-            console.log("ORS RAW RESPONSE:", data); // <-- ADDED THIS FOR DEBUGGING
+            console.log("OSRM RAW RESPONSE:", data);
 
-            if (!data.features || data.features.length === 0) {
-                // If features is empty, ORS couldn't find a path (e.g. click in water or too far from road)
+            if (data.code !== "Ok" || !data.routes || data.routes.length === 0) {
+                // If features is empty, OSRM couldn't find a path (e.g. click in water or too far from road)
                 throw new Error("No driving route found between these points. Please try selecting a location closer to a road.");
             }
 
-            const feature = data.features[0];
-            const coordinates = feature.geometry.coordinates; // [lng, lat]
-            const properties = feature.properties;
+            const route = data.routes[0];
+            const coordinates = route.geometry.coordinates; // [lng, lat]
 
-            // Standard ORS Metrics
-            const distanceKm = properties.summary.distance / 1000;
-            const durationMins = properties.summary.duration / 60;
+            // Standard OSRM Metrics
+            const distanceKm = route.distance / 1000;
+            const durationMins = route.duration / 60;
 
             routeDistSpan.textContent = distanceKm.toFixed(2) + " km";
             routeTimeSpan.textContent = Math.round(durationMins) + " mins";
@@ -1163,23 +1150,23 @@ function setupAdvancedFeatures() {
                 routeTypeLabel.innerHTML = '<span style="color:var(--safe-green)">✓ Safest Efficient Route</span>';
                 routeSafetyScoreSpan.style.color = "var(--safe-green)";
 
-                safeRouteLayer = L.geoJSON(feature, {
+                safeRouteLayer = L.geoJSON(route.geometry, {
                     style: { color: "#10b981", weight: 6, opacity: 0.8 }
                 }).addTo(map);
 
-                activeRouteGeoJSON = feature.geometry; // Assign for deviation monitoring
+                activeRouteGeoJSON = route.geometry; // Assign for deviation monitoring
             } else {
                 routeTypeLabel.innerHTML = '<span style="color:var(--safe-red)">⚠️ Proceed with caution (Standard Route)</span>';
                 routeSafetyScoreSpan.style.color = "var(--safe-red)";
 
-                shortestRouteLayer = L.geoJSON(feature, {
+                shortestRouteLayer = L.geoJSON(route.geometry, {
                     style: { color: "#3b82f6", weight: 6, opacity: 0.8 }
                 }).addTo(map);
 
-                activeRouteGeoJSON = feature.geometry;
+                activeRouteGeoJSON = route.geometry;
             }
 
-            map.fitBounds(L.geoJSON(feature).getBounds(), { padding: [50, 50] });
+            map.fitBounds(L.geoJSON(route.geometry).getBounds(), { padding: [50, 50] });
             startRouteMonitoring();
 
         } catch (error) {
