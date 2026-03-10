@@ -65,10 +65,10 @@ const nightWarningBanner = document.getElementById('night-warning-banner');
 
 // Custom Font Awesome Marker Icons
 const createIcon = (color, faClass) => L.divIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color:${color}; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3);"><i class="${faClass}" style="color: white; font-size: 14px;"></i></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15]
+    html: `<i class="${faClass}" style="color: ${color}; font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));"></i>`,
+    className: '',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
 });
 
 const icons = {
@@ -435,6 +435,13 @@ function updateSafetyScoreUI(score, locationCount) {
         const offset = circumference - (score / 100) * circumference;
         gaugeFill.style.strokeDashoffset = offset;
         gaugeFill.style.stroke = scoreColor;
+    }
+
+    // Update Linear Bar
+    const linearBar = document.getElementById('score-linear-bar');
+    if (linearBar) {
+        linearBar.style.width = score + '%';
+        linearBar.style.background = scoreColor;
     }
 
     // Trigger subtle animation
